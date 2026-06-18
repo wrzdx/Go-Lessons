@@ -1,23 +1,24 @@
-package http
+package transport
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"restapi/todo"
+	"restapi/internal/domain"
+	"restapi/internal/service"
 	"time"
 
 	"github.com/gorilla/mux"
 )
 
 type HTTPHandlers struct {
-	todoList *todo.List
+	taskService *service.TaskService
 }
 
-func NewHTTPHandlers(todoList *todo.List) *HTTPHandlers {
+func NewHTTPHandlers(ts *service.TaskService) *HTTPHandlers {
 	return &HTTPHandlers{
-		todoList: todoList,
+		taskService: ts,
 	}
 }
 
@@ -56,14 +57,14 @@ func (h *HTTPHandlers) HandleCreateTask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	todoTask := todo.NewTask(taskDTO.Title, taskDTO.Description)
-	if err := h.todoList.AddTask(todoTask); err != nil {
+	task := domain.NewTask(taskDTO.Title, taskDTO.Description)
+	if err := h.taskService.AddTask(task); err != nil {
 		errDTO := ErrorDTO{
 			Message: err.Error(),
 			Time:    time.Now(),
 		}
 
-		if errors.Is(err, todo.ErrTaskAlreadyExists) {
+		if errors.Is(err, domain.ErrTaskAlreadyExists) {
 			http.Error(w, errDTO.ToString(), http.StatusConflict)
 		} else {
 			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
@@ -72,7 +73,7 @@ func (h *HTTPHandlers) HandleCreateTask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	b, err := json.MarshalIndent(todoTask, "", "    ")
+	b, err := json.MarshalIndent(task, "", "    ")
 	if err != nil {
 		panic(err)
 	}
@@ -100,14 +101,14 @@ failed:
 func (h *HTTPHandlers) HandleGetTask(w http.ResponseWriter, r *http.Request) {
 	title := mux.Vars(r)["title"]
 
-	task, err := h.todoList.GetTask(title)
+	task, err := h.taskService.GetTask(title)
 	if err != nil {
 		errDTO := ErrorDTO{
 			Message: err.Error(),
 			Time:    time.Now(),
 		}
 
-		if errors.Is(err, todo.ErrTaskNotFound) {
+		if errors.Is(err, domain.ErrTaskNotFound) {
 			http.Error(w, errDTO.ToString(), http.StatusNotFound)
 		} else {
 			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
@@ -142,7 +143,7 @@ failed:
   - response body: JSON with error + time
 */
 func (h *HTTPHandlers) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
-	tasks := h.todoList.ListTasks()
+	tasks := h.taskService.ListTasks()
 	b, err := json.MarshalIndent(tasks, "", "    ")
 	if err != nil {
 		panic(err)
@@ -169,7 +170,7 @@ failed:
   - response body: JSON with error + time
 */
 func (h *HTTPHandlers) HandleGetAllUncompletedTasks(w http.ResponseWriter, r *http.Request) {
-	uncompletedTasks := h.todoList.ListUncompletedTasks()
+	uncompletedTasks := h.taskService.ListUncompletedTasks()
 	b, err := json.MarshalIndent(uncompletedTasks, "", "    ")
 	if err != nil {
 		panic(err)
@@ -210,14 +211,14 @@ func (h *HTTPHandlers) HandleCompleteTask(w http.ResponseWriter, r *http.Request
 	title := mux.Vars(r)["title"]
 
 	var (
-		changedTask todo.Task
+		changedTask domain.Task
 		err         error
 	)
 
 	if completeDTO.Complete {
-		changedTask, err = h.todoList.CompleteTask(title)
+		changedTask, err = h.taskService.CompleteTask(title)
 	} else {
-		changedTask, err = h.todoList.UncompleteTask(title)
+		changedTask, err = h.taskService.UncompleteTask(title)
 	}
 
 	if err != nil {
@@ -226,7 +227,7 @@ func (h *HTTPHandlers) HandleCompleteTask(w http.ResponseWriter, r *http.Request
 			Time:    time.Now(),
 		}
 
-		if errors.Is(err, todo.ErrTaskNotFound) {
+		if errors.Is(err, domain.ErrTaskNotFound) {
 			http.Error(w, errDTO.ToString(), http.StatusNotFound)
 		} else {
 			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
@@ -262,13 +263,13 @@ failed:
 func (h *HTTPHandlers) HandleDeleteTask(w http.ResponseWriter, r *http.Request) {
 	title := mux.Vars(r)["title"]
 
-	if err := h.todoList.DeleteTask(title); err != nil {
+	if err := h.taskService.DeleteTask(title); err != nil {
 		errDTO := ErrorDTO{
 			Message: err.Error(),
 			Time:    time.Now(),
 		}
 
-		if errors.Is(err, todo.ErrTaskNotFound) {
+		if errors.Is(err, domain.ErrTaskNotFound) {
 			http.Error(w, errDTO.ToString(), http.StatusNotFound)
 		} else {
 			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)

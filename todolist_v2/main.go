@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	"restapi/http"
-	"restapi/todo"
+	"restapi/internal/service"
+	"restapi/internal/transport"
 )
 
 func main() {
-	todoList := todo.NewList()
-	httpHandlers := http.NewHTTPHandlers(todoList)
-	httpServer := http.NewHTTPServer(httpHandlers)
+	todoList := service.NewTaskService()
+	httpHandlers := transport.NewHTTPHandlers(todoList)
+	httpServer := transport.NewHTTPServer(httpHandlers)
 
 	if err := httpServer.StartServer(); err != nil {
 		fmt.Println("failed to start http server:", err)
