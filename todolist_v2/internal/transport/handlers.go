@@ -57,7 +57,7 @@ func (h *HTTPHandlers) HandleCreateTask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	task := domain.NewTask(taskDTO.Title, taskDTO.Description)
+	task, _ := domain.NewTask(taskDTO.Title, taskDTO.Description)
 	if err := h.taskService.AddTask(task); err != nil {
 		errDTO := ErrorDTO{
 			Message: err.Error(),

@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type Task struct {
 	Title       string
@@ -11,7 +14,13 @@ type Task struct {
 	CompletedAt *time.Time
 }
 
-func NewTask(title string, description string) Task {
+
+func NewTask(title string, description string) (Task, error) {
+	title = strings.TrimSpace(title)
+	description = strings.TrimSpace(description)
+	if len(title) == 0 {
+		return Task{}, ErrEmptyTitle
+	}
 	return Task{
 		Title:       title,
 		Description: description,
@@ -19,7 +28,7 @@ func NewTask(title string, description string) Task {
 
 		CreatedAt:   time.Now(),
 		CompletedAt: nil,
-	}
+	}, nil
 }
 
 func (t *Task) Complete() {

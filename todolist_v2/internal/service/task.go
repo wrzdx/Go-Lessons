@@ -1,10 +1,30 @@
 package service
 
 import (
+	"context"
 	"maps"
 	"restapi/internal/domain"
 	"sync"
+	"time"
 )
+
+type UpdateTask struct {
+	Title       *string
+	Description *string
+	Completed   *bool
+
+	CreatedAt   *time.Time
+	CompletedAt *time.Time
+}
+
+type TaskRepository interface {
+	Create(ctx context.Context, task domain.Task) (domain.Task, error)
+	List(ctx context.Context) ([]domain.Task, error)
+	ListUncompleted(ctx context.Context) ([]domain.Task, error)
+	Get(ctx context.Context, title string) (domain.Task, error)
+	Update(ctx context.Context, title string, task UpdateTask) (domain.Task, error)
+	Delete(ctx context.Context, title string) error
+}
 
 type TaskService struct {
 	tasks map[string]domain.Task

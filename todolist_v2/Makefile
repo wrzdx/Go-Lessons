@@ -1,6 +1,9 @@
 include .env
 export
 
+run:
+	go run main.go
+
 postgres-up:
 	docker compose up -d postgres
 
