@@ -1,0 +1,10 @@
+2026-06-18T16:28:18.818043	INFO	logging/main.go:67	2026-06-18 16:28:18.7952009 +0300 MSK m=+8.957843701 GET "/strings": Amount of strings - 0, elapsed 0s, status 200, sent 2026-06-18 16:28:18.7952009 +0300 MSK m=+8.957843701
+
+2026-06-18T16:28:57.005371	INFO	logging/main.go:47	2026-06-18 16:28:57.0053715 +0300 MSK m=+47.168014301 POST "/strings": Amount of strings - 1, elapsed 0s, status 201, sent 2026-06-18 16:28:57.0053715 +0300 MSK m=+47.168014301
+
+2026-06-18T16:29:01.275217	INFO	logging/main.go:47	2026-06-18 16:29:01.2752178 +0300 MSK m=+51.437860601 POST "/strings": Amount of strings - 2, elapsed 0s, status 201, sent 2026-06-18 16:29:01.2752178 +0300 MSK m=+51.437860601
+
+2026-06-18T16:29:05.774413	INFO	logging/main.go:67	2026-06-18 16:29:05.7744138 +0300 MSK m=+55.937056601 GET "/strings": Amount of strings - 2, elapsed 0s, status 200, sent 2026-06-18 16:29:05.7744138 +0300 MSK m=+55.937056601
+
+2026-06-18T16:29:13.508735	INFO	logging/main.go:76	2026-06-18 16:29:13.5087252 +0300 MSK m=+63.671368001 DELETE "/strings": Amount of strings - 2, elapsed 10.5µs, status 405, sent 2026-06-18 16:29:13.5087357 +0300 MSK m=+63.671378501
+
