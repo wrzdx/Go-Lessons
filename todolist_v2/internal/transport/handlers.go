@@ -3,7 +3,6 @@ package transport
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"restapi/internal/core"
@@ -12,25 +11,28 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"go.uber.org/zap"
 )
 
 type httpHandlers struct {
 	taskService service.TaskService
+	logger      *zap.Logger
 }
 
-func NewHTTPHandlers(ts service.TaskService) *httpHandlers {
+func NewHTTPHandlers(ts service.TaskService, logger *zap.Logger) *httpHandlers {
 	return &httpHandlers{
 		taskService: ts,
+		logger: logger,
 	}
 }
 
-func respond(w http.ResponseWriter, statusCode int, data any) {
+func (h *httpHandlers) respond(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 
 	w.WriteHeader(statusCode)
 
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		fmt.Printf("failed to write http response: %v\n", err)
+		h.logger.Error("failed to write http response", zap.Error(err))
 	}
 }
 
@@ -46,7 +48,7 @@ func (h *httpHandlers) HandleCreateTask(w http.ResponseWriter, r *http.Request) 
 			errDTO.Message = core.ErrEmptyBody.Error()
 		}
 
-		respond(w, http.StatusBadRequest, errDTO)
+		h.respond(w, http.StatusBadRequest, errDTO)
 		return
 	}
 
@@ -56,7 +58,7 @@ func (h *httpHandlers) HandleCreateTask(w http.ResponseWriter, r *http.Request) 
 			Time:    time.Now(),
 		}
 
-		respond(w, http.StatusBadRequest, errDTO)
+		h.respond(w, http.StatusBadRequest, errDTO)
 		return
 	}
 	snapshot, err := h.taskService.Create(r.Context(), taskDTO)
@@ -67,14 +69,14 @@ func (h *httpHandlers) HandleCreateTask(w http.ResponseWriter, r *http.Request) 
 		}
 
 		if errors.Is(err, core.ErrTaskAlreadyExists) {
-			respond(w, http.StatusConflict, errDTO)
+			h.respond(w, http.StatusConflict, errDTO)
 		} else {
-			respond(w, http.StatusInternalServerError, errDTO)
+			h.respond(w, http.StatusInternalServerError, errDTO)
 		}
 
 		return
 	}
-	respond(w, http.StatusCreated, snapshotToResponse(snapshot))
+	h.respond(w, http.StatusCreated, snapshotToResponse(snapshot))
 }
 
 func (h *httpHandlers) HandleGetTask(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +88,7 @@ func (h *httpHandlers) HandleGetTask(w http.ResponseWriter, r *http.Request) {
 			Message: core.ErrEmptyTitle.Error(),
 			Time:    time.Now(),
 		}
-		respond(w, http.StatusBadRequest, errDTO)
+		h.respond(w, http.StatusBadRequest, errDTO)
 		return
 	}
 
@@ -98,13 +100,13 @@ func (h *httpHandlers) HandleGetTask(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if errors.Is(err, core.ErrTaskNotFound) {
-			respond(w, http.StatusNotFound, errDTO)
+			h.respond(w, http.StatusNotFound, errDTO)
 		} else {
-			respond(w, http.StatusInternalServerError, errDTO)
+			h.respond(w, http.StatusInternalServerError, errDTO)
 		}
 		return
 	}
-	respond(w, http.StatusOK, snapshotToResponse(snapshot))
+	h.respond(w, http.StatusOK, snapshotToResponse(snapshot))
 }
 
 func (h *httpHandlers) HandleGetTasks(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +125,7 @@ func (h *httpHandlers) HandleGetTasks(w http.ResponseWriter, r *http.Request) {
 				Message: core.ErrInvalidCompleted.Error(),
 				Time:    time.Now(),
 			}
-			respond(w, http.StatusBadRequest, errDTO)
+			h.respond(w, http.StatusBadRequest, errDTO)
 			return
 		}
 	}
@@ -134,7 +136,7 @@ func (h *httpHandlers) HandleGetTasks(w http.ResponseWriter, r *http.Request) {
 			Time:    time.Now(),
 		}
 
-		respond(w, http.StatusInternalServerError, errDTO)
+		h.respond(w, http.StatusInternalServerError, errDTO)
 		return
 	}
 	tasks := make([]taskResponse, 0, len(snapshots))
@@ -142,7 +144,7 @@ func (h *httpHandlers) HandleGetTasks(w http.ResponseWriter, r *http.Request) {
 		tasks = append(tasks, snapshotToResponse(s))
 	}
 
-	respond(w, http.StatusOK, tasks)
+	h.respond(w, http.StatusOK, tasks)
 }
 
 func (h *httpHandlers) HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +170,7 @@ func (h *httpHandlers) HandleUpdateTask(w http.ResponseWriter, r *http.Request) 
 			Message: core.ErrEmptyTitle.Error(),
 			Time:    time.Now(),
 		}
-		respond(w, http.StatusBadRequest, errDTO)
+		h.respond(w, http.StatusBadRequest, errDTO)
 		return
 	}
 
@@ -180,15 +182,15 @@ func (h *httpHandlers) HandleUpdateTask(w http.ResponseWriter, r *http.Request) 
 		}
 
 		if errors.Is(err, core.ErrTaskNotFound) {
-			respond(w, http.StatusNotFound, errDTO)
+			h.respond(w, http.StatusNotFound, errDTO)
 		} else {
-			respond(w, http.StatusInternalServerError, errDTO)
+			h.respond(w, http.StatusInternalServerError, errDTO)
 		}
 
 		return
 	}
 
-	respond(w, http.StatusOK, snapshotToResponse(snapshot))
+	h.respond(w, http.StatusOK, snapshotToResponse(snapshot))
 }
 
 func (h *httpHandlers) HandleDeleteTask(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +202,7 @@ func (h *httpHandlers) HandleDeleteTask(w http.ResponseWriter, r *http.Request) 
 			Message: core.ErrEmptyTitle.Error(),
 			Time:    time.Now(),
 		}
-		respond(w, http.StatusBadRequest, errDTO)
+		h.respond(w, http.StatusBadRequest, errDTO)
 		return
 	}
 	if err := h.taskService.Delete(r.Context(), title); err != nil {
