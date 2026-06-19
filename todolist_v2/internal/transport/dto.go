@@ -2,7 +2,7 @@ package transport
 
 import (
 	"encoding/json"
-	"errors"
+	"restapi/internal/core"
 	"time"
 )
 
@@ -15,13 +15,13 @@ type TaskDTO struct {
 	Description string
 }
 
+type PatchDRO struct {
+	
+}
+
 func (t TaskDTO) ValidateForCreate() error {
 	if t.Title == "" {
-		return errors.New("title is empty")
-	}
-
-	if t.Description == "" {
-		return errors.New("description is empty")
+		return core.ErrEmptyTitle
 	}
 
 	return nil
