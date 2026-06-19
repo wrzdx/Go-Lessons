@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"restapi/internal/core"
+	"restapi/internal/service"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -118,7 +119,7 @@ func (db *postgresRepository) Get(ctx context.Context, title string) (TaskModel,
 	return t, nil
 }
 
-func (db *postgresRepository) Update(ctx context.Context, title string, t TaskPatch) (TaskModel, error) {
+func (db *postgresRepository) Update(ctx context.Context, title string, t service.TaskPatch) (TaskModel, error) {
 	var updated TaskModel
 	query := `
 		UPDATE tasks 

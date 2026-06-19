@@ -3,14 +3,13 @@ package service
 import (
 	"context"
 	"restapi/internal/core/domain"
-	"restapi/internal/repository"
 )
 
 type taskService struct {
-	repo repository.TaskRepository
+	repo TaskRepository
 }
 
-func NewTaskService(repo repository.TaskRepository) *taskService {
+func NewTaskService(repo TaskRepository) *taskService {
 	return &taskService{
 		repo: repo,
 	}
@@ -21,9 +20,8 @@ func (ts *taskService) Create(ctx context.Context, task TaskSnapshot) (TaskSnaps
 	if err != nil {
 		return nil, nil
 	}
-	dbModel := toRepoModel(newTask)
 
-	if err := ts.repo.Create(ctx, dbModel); err != nil {
+	if err := ts.repo.Create(ctx, newTask); err != nil {
 		return nil, err
 	}
 
@@ -36,7 +34,7 @@ func (ts *taskService) List(ctx context.Context) ([]TaskSnapshot, error) {
 func (ts *taskService) ListUncompleted(ctx context.Context) ([]TaskSnapshot, error) {
 	return ts.ListUncompleted(ctx)
 }
-func (ts *taskService) Update(ctx context.Context, title string, task repository.TaskPatch) (TaskSnapshot, error) {
+func (ts *taskService) Update(ctx context.Context, title string, task TaskPatch) (TaskSnapshot, error) {
 	return ts.Update(ctx, title, task)
 }
 func (ts *taskService) Delete(ctx context.Context, title string) error {
