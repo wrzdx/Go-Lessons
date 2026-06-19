@@ -1,45 +1,38 @@
 package transport
 
-// import (
-// 	"errors"
-// 	"net/http"
+import (
+	"errors"
+	"net/http"
 
-// 	"github.com/gorilla/mux"
-// )
+	"github.com/gorilla/mux"
+)
 
-// type HTTPServer struct {
-// 	httpHandlers *HTTPHandlers
-// }
+type httpServer struct {
+	httpHandlers *httpHandlers
+}
 
-// func NewHTTPServer(httpHandler *HTTPHandlers) *HTTPServer {
-// 	return &HTTPServer{
-// 		httpHandlers: httpHandler,
-// 	}
-// }
+func NewHTTPServer(httpHandler *httpHandlers) *httpServer {
+	return &httpServer{
+		httpHandlers: httpHandler,
+	}
+}
 
-// func (s *HTTPServer) StartServer() error {
-// 	router := mux.NewRouter()
+func (s *httpServer) StartServer() error {
+	router := mux.NewRouter()
 
-// 	router.Path("/tasks").Methods("POST").HandlerFunc(s.httpHandlers.HandleCreateTask)
-// 	router.Path("/tasks/{title}").Methods("GET").HandlerFunc(s.httpHandlers.HandleGetTask)
+	router.Path("/tasks").Methods("POST").HandlerFunc(s.httpHandlers.HandleCreateTask)
+	router.Path("/tasks/{title}").Methods("GET").HandlerFunc(s.httpHandlers.HandleGetTask)
+	router.Path("/tasks").Methods("GET").HandlerFunc(s.httpHandlers.HandleGetTasks)
+	router.Path("/tasks/{title}").Methods("PATCH").HandlerFunc(s.httpHandlers.HandleUpdateTask)
+	router.Path("/tasks/{title}").Methods("DELETE").HandlerFunc(s.httpHandlers.HandleDeleteTask)
 
-// 	// ребята, тут я зафакапил, конечно же, если мы получаем список НЕвыполненных задач, то в query параметре должно быть completed=false, а не true
-// 	// потому что completed=true обозначает "список всех выполненных задач", а мы хотим наоборот
-// 	//                                          ("completed", "false")
-// 	//                                             ⤵️⤵️⤵️     ⤵️⤵️⤵️
-// 	router.Path("/tasks").Methods("GET").Queries("completed", "true").HandlerFunc(s.httpHandlers.HandleGetAllUncompletedTasks)
+	if err := http.ListenAndServe(":8000", router); err != nil {
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
 
-// 	router.Path("/tasks").Methods("GET").HandlerFunc(s.httpHandlers.HandleGetAllTasks)
-// 	router.Path("/tasks/{title}").Methods("PATCH").HandlerFunc(s.httpHandlers.HandleCompleteTask)
-// 	router.Path("/tasks/{title}").Methods("DELETE").HandlerFunc(s.httpHandlers.HandleDeleteTask)
+		return err
+	}
 
-// 	if err := http.ListenAndServe(":9091", router); err != nil {
-// 		if errors.Is(err, http.ErrServerClosed) {
-// 			return nil
-// 		}
-
-// 		return err
-// 	}
-
-// 	return nil
-// }
+	return nil
+}

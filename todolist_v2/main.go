@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"restapi/internal/repository"
+	"restapi/internal/service"
+	"restapi/internal/transport"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -18,9 +20,11 @@ func main() {
 		return
 	}
 	repo := repository.NewPostgres(conn)
-	err = repo.Delete(ctx, "empty")
-	if err != nil {
+	taskService := service.NewTaskService(repo)
+	handlers := transport.NewHTTPHandlers(taskService)
+	server := transport.NewHTTPServer(handlers)
+	fmt.Println("Server successfuly started!")
+	if err := server.StartServer(); err != nil {
 		fmt.Println(err)
-		return
 	}
 }

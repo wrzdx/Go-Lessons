@@ -25,8 +25,7 @@ type TaskPatch interface {
 }
 type TaskService interface {
 	Create(ctx context.Context, task TaskInput) (TaskSnapshot, error)
-	List(ctx context.Context) ([]TaskSnapshot, error)
-	ListUncompleted(ctx context.Context) ([]TaskSnapshot, error)
+	List(ctx context.Context, completedFilter *bool) ([]TaskSnapshot, error)
 	Get(ctx context.Context, title string) (TaskSnapshot, error)
 	Update(ctx context.Context, title string, task TaskPatch) (TaskSnapshot, error)
 	Delete(ctx context.Context, title string) error
@@ -34,9 +33,8 @@ type TaskService interface {
 
 type TaskRepository interface {
 	Create(ctx context.Context, task TaskSnapshot) error
-	List(ctx context.Context) ([]TaskSnapshot, error)
-	ListUncompleted(ctx context.Context) ([]TaskSnapshot, error)
+	List(ctx context.Context, completedFilter *bool) ([]TaskSnapshot, error)
 	Get(ctx context.Context, title string) (TaskSnapshot, error)
-	Update(ctx context.Context, title string, task TaskPatch) (TaskSnapshot, error)
+	Update(ctx context.Context, title string, task TaskSnapshot) (TaskSnapshot, error)
 	Delete(ctx context.Context, title string) error
 }

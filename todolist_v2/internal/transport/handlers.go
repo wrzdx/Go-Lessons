@@ -1,282 +1,222 @@
 package transport
 
-// import (
-// 	"encoding/json"
-// 	"errors"
-// 	"fmt"
-// 	"net/http"
-// 	"restapi/internal/domain"
-// 	"restapi/internal/service"
-// 	"time"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"restapi/internal/core"
+	"restapi/internal/service"
+	"strings"
+	"time"
 
-// 	"github.com/gorilla/mux"
-// )
+	"github.com/gorilla/mux"
+)
 
-// type HTTPHandlers struct {
-// 	taskService *service.TaskService
-// }
+type httpHandlers struct {
+	taskService service.TaskService
+}
 
-// func NewHTTPHandlers(ts *service.TaskService) *HTTPHandlers {
-// 	return &HTTPHandlers{
-// 		taskService: ts,
-// 	}
-// }
+func NewHTTPHandlers(ts service.TaskService) *httpHandlers {
+	return &httpHandlers{
+		taskService: ts,
+	}
+}
 
-// /*
-// pattern: /tasks
-// method:  POST
-// info:    JSON in HTTP request body
+func respond(w http.ResponseWriter, statusCode int, data any) {
+	w.Header().Set("Content-Type", "application/json")
 
-// succeed:
-//   - status code:   201 Created
-//   - response body: JSON represent created task
+	w.WriteHeader(statusCode)
 
-// failed:
-//   - status code:   400, 409, 500, ...
-//   - response body: JSON with error + time
-// */
-// func (h *HTTPHandlers) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
-// 	var taskDTO TaskDTO
-// 	if err := json.NewDecoder(r.Body).Decode(&taskDTO); err != nil {
-// 		errDTO := ErrorDTO{
-// 			Message: err.Error(),
-// 			Time:    time.Now(),
-// 		}
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		fmt.Printf("failed to write http response: %v\n", err)
+	}
+}
 
-// 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
-// 		return
-// 	}
+func (h *httpHandlers) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
+	var taskDTO taskInput
+	if err := json.NewDecoder(r.Body).Decode(&taskDTO); err != nil {
+		errDTO := errorDTO{
+			Message: err.Error(),
+			Time:    time.Now(),
+		}
 
-// 	if err := taskDTO.ValidateForCreate(); err != nil {
-// 		errDTO := ErrorDTO{
-// 			Message: err.Error(),
-// 			Time:    time.Now(),
-// 		}
+		if errors.Is(err, io.EOF) {
+			errDTO.Message = core.ErrEmptyBody.Error()
+		}
 
-// 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
-// 		return
-// 	}
+		respond(w, http.StatusBadRequest, errDTO)
+		return
+	}
 
-// 	task, _ := domain.NewTask(taskDTO.Title, taskDTO.Description)
-// 	if err := h.taskService.AddTask(task); err != nil {
-// 		errDTO := ErrorDTO{
-// 			Message: err.Error(),
-// 			Time:    time.Now(),
-// 		}
+	if err := taskDTO.ValidateForCreate(); err != nil {
+		errDTO := errorDTO{
+			Message: err.Error(),
+			Time:    time.Now(),
+		}
 
-// 		if errors.Is(err, domain.ErrTaskAlreadyExists) {
-// 			http.Error(w, errDTO.ToString(), http.StatusConflict)
-// 		} else {
-// 			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
-// 		}
+		respond(w, http.StatusBadRequest, errDTO)
+		return
+	}
+	snapshot, err := h.taskService.Create(r.Context(), taskDTO)
+	if err != nil {
+		errDTO := errorDTO{
+			Message: err.Error(),
+			Time:    time.Now(),
+		}
 
-// 		return
-// 	}
+		if errors.Is(err, core.ErrTaskAlreadyExists) {
+			respond(w, http.StatusConflict, errDTO)
+		} else {
+			respond(w, http.StatusInternalServerError, errDTO)
+		}
 
-// 	b, err := json.MarshalIndent(task, "", "    ")
-// 	if err != nil {
-// 		panic(err)
-// 	}
+		return
+	}
+	respond(w, http.StatusCreated, snapshotToResponse(snapshot))
+}
 
-// 	w.WriteHeader(http.StatusCreated)
-// 	if _, err := w.Write(b); err != nil {
-// 		fmt.Println("failed to write http response:", err)
-// 		return
-// 	}
-// }
+func (h *httpHandlers) HandleGetTask(w http.ResponseWriter, r *http.Request) {
+	title := mux.Vars(r)["title"]
+	title = strings.TrimSpace(title)
 
-// /*
-// pattern: /tasks/{title}
-// method:  GET
-// info:    pattern
+	if title == "" {
+		errDTO := errorDTO{
+			Message: core.ErrEmptyTitle.Error(),
+			Time:    time.Now(),
+		}
+		respond(w, http.StatusBadRequest, errDTO)
+		return
+	}
 
-// succeed:
-//   - status code: 200 Ok
-//   - response body: JSON represented found task
+	snapshot, err := h.taskService.Get(r.Context(), title)
+	if err != nil {
+		errDTO := errorDTO{
+			Message: err.Error(),
+			Time:    time.Now(),
+		}
 
-// failed:
-//   - status code: 400, 404, 500, ...
-//   - response body: JSON with error + time
-// */
-// func (h *HTTPHandlers) HandleGetTask(w http.ResponseWriter, r *http.Request) {
-// 	title := mux.Vars(r)["title"]
+		if errors.Is(err, core.ErrTaskNotFound) {
+			respond(w, http.StatusNotFound, errDTO)
+		} else {
+			respond(w, http.StatusInternalServerError, errDTO)
+		}
+		return
+	}
+	respond(w, http.StatusOK, snapshotToResponse(snapshot))
+}
 
-// 	task, err := h.taskService.GetTask(title)
-// 	if err != nil {
-// 		errDTO := ErrorDTO{
-// 			Message: err.Error(),
-// 			Time:    time.Now(),
-// 		}
+func (h *httpHandlers) HandleGetTasks(w http.ResponseWriter, r *http.Request) {
+	completedStr := r.URL.Query().Get("completed")
+	var completedFilter *bool
+	if completedStr != "" {
+		switch completedStr {
+		case "true":
+			b := true
+			completedFilter = &b
+		case "false":
+			b := false
+			completedFilter = &b
+		default:
+			errDTO := errorDTO{
+				Message: core.ErrInvalidCompleted.Error(),
+				Time:    time.Now(),
+			}
+			respond(w, http.StatusBadRequest, errDTO)
+			return
+		}
+	}
+	snapshots, err := h.taskService.List(r.Context(), completedFilter)
+	if err != nil {
+		errDTO := errorDTO{
+			Message: err.Error(),
+			Time:    time.Now(),
+		}
 
-// 		if errors.Is(err, domain.ErrTaskNotFound) {
-// 			http.Error(w, errDTO.ToString(), http.StatusNotFound)
-// 		} else {
-// 			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
-// 		}
+		respond(w, http.StatusInternalServerError, errDTO)
+		return
+	}
+	tasks := make([]taskResponse, 0, len(snapshots))
+	for _, s := range snapshots {
+		tasks = append(tasks, snapshotToResponse(s))
+	}
 
-// 		return
-// 	}
+	respond(w, http.StatusOK, tasks)
+}
 
-// 	b, err := json.MarshalIndent(task, "", "    ")
-// 	if err != nil {
-// 		panic(err)
-// 	}
+func (h *httpHandlers) HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
+	var patch patchDTO
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		errDTO := errorDTO{
+			Message: err.Error(),
+			Time:    time.Now(),
+		}
+		if errors.Is(err, io.EOF) {
+			errDTO.Message = core.ErrEmptyBody.Error()
+		}
 
-// 	w.WriteHeader(http.StatusOK)
-// 	if _, err := w.Write(b); err != nil {
-// 		fmt.Println("failed to write http response:", err)
-// 		return
-// 	}
-// }
+		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
+		return
+	}
 
-// /*
-// pattern: /tasks
-// method:  GET
-// info:    -
+	title := mux.Vars(r)["title"]
+	title = strings.TrimSpace(title)
 
-// succeed:
-//   - status code: 200 Ok
-//   - response body: JSON represented found tasks
+	if title == "" {
+		errDTO := errorDTO{
+			Message: core.ErrEmptyTitle.Error(),
+			Time:    time.Now(),
+		}
+		respond(w, http.StatusBadRequest, errDTO)
+		return
+	}
 
-// failed:
-//   - status code: 400, 500, ...
-//   - response body: JSON with error + time
-// */
-// func (h *HTTPHandlers) HandleGetAllTasks(w http.ResponseWriter, r *http.Request) {
-// 	tasks := h.taskService.ListTasks()
-// 	b, err := json.MarshalIndent(tasks, "", "    ")
-// 	if err != nil {
-// 		panic(err)
-// 	}
+	snapshot, err := h.taskService.Update(r.Context(), title, patch)
+	if err != nil {
+		errDTO := errorDTO{
+			Message: err.Error(),
+			Time:    time.Now(),
+		}
 
-// 	w.WriteHeader(http.StatusOK)
-// 	if _, err := w.Write(b); err != nil {
-// 		fmt.Println("failed to write http response:", err)
-// 		return
-// 	}
-// }
+		if errors.Is(err, core.ErrTaskNotFound) {
+			respond(w, http.StatusNotFound, errDTO)
+		} else {
+			respond(w, http.StatusInternalServerError, errDTO)
+		}
 
-// /*
-// pattern: /tasks?completed=true <<--- ребята тут я зафакапил, конечно же, если мы получаем список НЕвыполненных задач, то в query параметре должно быть completed=false, а не true
-// method:  GET
-// info:    query params
+		return
+	}
 
-// succeed:
-//   - status code: 200 Ok
-//   - response body: JSON represented found tasks
+	respond(w, http.StatusOK, snapshotToResponse(snapshot))
+}
 
-// failed:
-//   - status code: 400, 500, ...
-//   - response body: JSON with error + time
-// */
-// func (h *HTTPHandlers) HandleGetAllUncompletedTasks(w http.ResponseWriter, r *http.Request) {
-// 	uncompletedTasks := h.taskService.ListUncompletedTasks()
-// 	b, err := json.MarshalIndent(uncompletedTasks, "", "    ")
-// 	if err != nil {
-// 		panic(err)
-// 	}
+func (h *httpHandlers) HandleDeleteTask(w http.ResponseWriter, r *http.Request) {
+	title := mux.Vars(r)["title"]
+	title = strings.TrimSpace(title)
 
-// 	w.WriteHeader(http.StatusOK)
-// 	if _, err := w.Write(b); err != nil {
-// 		fmt.Println("failed to write http response:", err)
-// 		return
-// 	}
-// }
+	if title == "" {
+		errDTO := errorDTO{
+			Message: core.ErrEmptyTitle.Error(),
+			Time:    time.Now(),
+		}
+		respond(w, http.StatusBadRequest, errDTO)
+		return
+	}
+	if err := h.taskService.Delete(r.Context(), title); err != nil {
+		errDTO := errorDTO{
+			Message: err.Error(),
+			Time:    time.Now(),
+		}
 
-// /*
-// pattern: /tasks/{title}
-// method:  PATCH
-// info:    pattern + JSON in request body
+		if errors.Is(err, core.ErrTaskNotFound) {
+			http.Error(w, errDTO.ToString(), http.StatusNotFound)
+		} else {
+			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+		}
 
-// succeed:
-//   - status code: 200 Ok
-//   - response body: JSON represented changed task
+		return
+	}
 
-// failed:
-//   - status code: 400, 409, 500, ...
-//   - response body: JSON with error + time
-// */
-// func (h *HTTPHandlers) HandleCompleteTask(w http.ResponseWriter, r *http.Request) {
-// 	var completeDTO CompleteTaskDTO
-// 	if err := json.NewDecoder(r.Body).Decode(&completeDTO); err != nil {
-// 		errDTO := ErrorDTO{
-// 			Message: err.Error(),
-// 			Time:    time.Now(),
-// 		}
-
-// 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	title := mux.Vars(r)["title"]
-
-// 	var (
-// 		changedTask domain.Task
-// 		err         error
-// 	)
-
-// 	if completeDTO.Complete {
-// 		changedTask, err = h.taskService.CompleteTask(title)
-// 	} else {
-// 		changedTask, err = h.taskService.UncompleteTask(title)
-// 	}
-
-// 	if err != nil {
-// 		errDTO := ErrorDTO{
-// 			Message: err.Error(),
-// 			Time:    time.Now(),
-// 		}
-
-// 		if errors.Is(err, domain.ErrTaskNotFound) {
-// 			http.Error(w, errDTO.ToString(), http.StatusNotFound)
-// 		} else {
-// 			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
-// 		}
-
-// 		return
-// 	}
-
-// 	b, err := json.MarshalIndent(changedTask, "", "    ")
-// 	if err != nil {
-// 		panic(err)
-// 	}
-
-// 	if _, err := w.Write(b); err != nil {
-// 		fmt.Println("failed to write http response:", err)
-// 		return
-// 	}
-// }
-
-// /*
-// pattern: /tasks/{title}
-// method:  DELETE
-// info:    pattern
-
-// succeed:
-//   - status code: 204 No Content
-//   - response body: -
-
-// failed:
-//   - status code: 400, 404, 500, ...
-//   - response body: JSON with error + time
-// */
-// func (h *HTTPHandlers) HandleDeleteTask(w http.ResponseWriter, r *http.Request) {
-// 	title := mux.Vars(r)["title"]
-
-// 	if err := h.taskService.DeleteTask(title); err != nil {
-// 		errDTO := ErrorDTO{
-// 			Message: err.Error(),
-// 			Time:    time.Now(),
-// 		}
-
-// 		if errors.Is(err, domain.ErrTaskNotFound) {
-// 			http.Error(w, errDTO.ToString(), http.StatusNotFound)
-// 		} else {
-// 			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
-// 		}
-
-// 		return
-// 	}
-
-// 	w.WriteHeader(http.StatusNoContent)
-// }
+	w.WriteHeader(http.StatusNoContent)
+}

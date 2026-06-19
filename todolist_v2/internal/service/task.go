@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"restapi/internal/core/domain"
 )
 
 type taskService struct {
@@ -15,8 +14,8 @@ func NewTaskService(repo TaskRepository) *taskService {
 	}
 }
 
-func (ts *taskService) Create(ctx context.Context, task TaskSnapshot) (TaskSnapshot, error) {
-	newTask, err := domain.NewTask(task.GetTitle(), task.GetDescription())
+func (ts *taskService) Create(ctx context.Context, task TaskInput) (TaskSnapshot, error) {
+	newTask, err := NewTask(task.GetTitle(), task.GetDescription())
 	if err != nil {
 		return nil, nil
 	}
@@ -28,17 +27,31 @@ func (ts *taskService) Create(ctx context.Context, task TaskSnapshot) (TaskSnaps
 	return newTask, nil
 }
 
-func (ts *taskService) List(ctx context.Context) ([]TaskSnapshot, error) {
-	return ts.List(ctx)
+func (ts *taskService) List(ctx context.Context, completedFilter *bool) ([]TaskSnapshot, error) {
+	return ts.repo.List(ctx, completedFilter)
 }
-func (ts *taskService) ListUncompleted(ctx context.Context) ([]TaskSnapshot, error) {
-	return ts.ListUncompleted(ctx)
-}
-func (ts *taskService) Update(ctx context.Context, title string, task TaskPatch) (TaskSnapshot, error) {
-	return ts.Update(ctx, title, task)
+func (ts *taskService) Update(ctx context.Context, title string, patch TaskPatch) (TaskSnapshot, error) {
+	snapshot, err := ts.repo.Get(ctx, title)
+	if err != nil {
+		return nil, err
+	}
+	currentTask := fromSnapshot(snapshot)
+	if patch.GetTitle() != nil {
+		if err := currentTask.SetTitle(*patch.GetTitle()); err != nil {
+			return Task{}, err
+		}
+	}
+	if patch.GetDescription() != nil {
+		currentTask.SetDescription(*patch.GetDescription())
+	}
+	if patch.GetCompleted() != nil {
+		currentTask.SetCompleted(*patch.GetCompleted())
+	}
+
+	return ts.repo.Update(ctx, title, currentTask)
 }
 func (ts *taskService) Delete(ctx context.Context, title string) error {
-	return ts.Delete(ctx, title)
+	return ts.repo.Delete(ctx, title)
 }
 
 func (ts *taskService) Get(ctx context.Context, title string) (TaskSnapshot, error) {

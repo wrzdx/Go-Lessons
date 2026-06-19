@@ -1,4 +1,4 @@
-package domain
+package service
 
 import (
 	"restapi/internal/core"
@@ -13,6 +13,16 @@ type Task struct {
 
 	createdAt   time.Time
 	completedAt *time.Time
+}
+
+func fromSnapshot(snapshot TaskSnapshot) Task {
+	return Task{
+		title:       snapshot.GetTitle(),
+		description: snapshot.GetDescription(),
+		completed:   snapshot.GetCompleted(),
+		createdAt:   snapshot.GetCreatedAt(),
+		completedAt: snapshot.GetCompletedAt(),
+	}
 }
 
 func NewTask(title string, description string) (Task, error) {
@@ -46,17 +56,21 @@ func (t *Task) SetTitle(title string) error {
 	return nil
 }
 
-func (t *Task) SetDescription(title string) {
-	t.title = title
+func (t *Task) SetDescription(description string) {
+	t.description = description
 }
 
 func (t *Task) SetCompleted(completed bool) {
-	if completed {
-		completeTime := time.Now()
-		t.completed = true
-		t.completedAt = &completeTime
-	} else {
-		t.completed = false
-		t.completedAt = nil
-	}
+    if t.completed == completed {
+        return
+    }
+
+    if completed {
+        completeTime := time.Now()
+        t.completed = true
+        t.completedAt = &completeTime
+    } else {
+        t.completed = false
+        t.completedAt = nil
+    }
 }

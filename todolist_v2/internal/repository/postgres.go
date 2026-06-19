@@ -8,6 +8,7 @@ import (
 	"restapi/internal/service"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type postgresRepository struct {
@@ -20,43 +21,49 @@ func NewPostgres(conn *pgx.Conn) *postgresRepository {
 	}
 }
 
-func (db *postgresRepository) Create(ctx context.Context, t TaskModel) (TaskModel, error) {
+func (db *postgresRepository) Create(ctx context.Context, t service.TaskSnapshot) error {
 	query := `
 		INSERT INTO tasks 
 		(title, description, completed, created_at, completed_at) 
 		VALUES 
-		($1, $2, $3, $4, $5)
-		RETURNING *;
+		($1, $2, $3, $4, $5);
 	`
-	err := db.conn.QueryRow(
+	_, err := db.conn.Exec(
 		ctx,
 		query,
-		t.Title,
-		t.Description,
-		t.Completed,
-		t.CreatedAt,
-		t.CompletedAt,
-	).Scan(
-		&t.Title,
-		&t.Description,
-		&t.Completed,
-		&t.CreatedAt,
-		&t.CompletedAt,
+		t.GetTitle(),
+		t.GetDescription(),
+		t.GetCompleted(),
+		t.GetCreatedAt(),
+		t.GetCompletedAt(),
 	)
 
 	if err != nil {
-		return TaskModel{}, err
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
+			if pgErr.Code == "23505" { // unique_violation
+				return core.ErrTaskAlreadyExists
+			}
+		}
+		return err
 	}
-	return t, nil
+	return nil
 }
-func (db *postgresRepository) List(ctx context.Context) ([]TaskModel, error) {
-	query := `SELECT * FROM tasks;`
-	rows, err := db.conn.Query(context.Background(), query)
+func (db *postgresRepository) List(ctx context.Context, completedFilter *bool) ([]service.TaskSnapshot, error) {
+	var query string
+	var args []any
+
+	if completedFilter == nil {
+		query = "SELECT * FROM tasks;"
+	} else {
+		query ="SELECT * FROM tasks WHERE completed = $1;"
+		args = append(args, *completedFilter)
+	}
+	rows, err := db.conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	tasks := []TaskModel{}
+	tasks := []service.TaskSnapshot{}
 	for rows.Next() {
 		var t TaskModel
 		if err := rows.Scan(&t.Title,
@@ -72,30 +79,8 @@ func (db *postgresRepository) List(ctx context.Context) ([]TaskModel, error) {
 	return tasks, nil
 }
 
-func (db *postgresRepository) ListUncompleted(ctx context.Context) ([]TaskModel, error) {
-	query := `SELECT * FROM tasks WHERE completed=false;`
-	rows, err := db.conn.Query(context.Background(), query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	tasks := []TaskModel{}
-	for rows.Next() {
-		var t TaskModel
-		if err := rows.Scan(&t.Title,
-			&t.Description,
-			&t.Completed,
-			&t.CreatedAt,
-			&t.CompletedAt); err != nil {
-			return nil, err
-		}
-		tasks = append(tasks, t)
-	}
 
-	return tasks, nil
-}
-
-func (db *postgresRepository) Get(ctx context.Context, title string) (TaskModel, error) {
+func (db *postgresRepository) Get(ctx context.Context, title string) (service.TaskSnapshot, error) {
 	var t TaskModel
 	query := `SELECT * FROM tasks WHERE title=$1;`
 	err := db.conn.QueryRow(
@@ -119,16 +104,15 @@ func (db *postgresRepository) Get(ctx context.Context, title string) (TaskModel,
 	return t, nil
 }
 
-func (db *postgresRepository) Update(ctx context.Context, title string, t service.TaskPatch) (TaskModel, error) {
+func (db *postgresRepository) Update(ctx context.Context, title string, t service.TaskSnapshot) (service.TaskSnapshot, error) {
 	var updated TaskModel
 	query := `
 		UPDATE tasks 
 		SET title=COALESCE($1, title), 
 			description=COALESCE($2, description), 
-			completed=COALESCE($3, completed), 
-			created_at=COALESCE($4, created_at), 
-			completed_at=COALESCE($5, completed_at)
-		WHERE title=$6
+			completed=$3,  
+			completed_at=$4
+		WHERE title=$5
 		RETURNING *;
 	`
 	err := db.conn.QueryRow(
@@ -137,6 +121,7 @@ func (db *postgresRepository) Update(ctx context.Context, title string, t servic
 		t.GetTitle(),
 		t.GetDescription(),
 		t.GetCompleted(),
+		t.GetCompletedAt(),
 		title,
 	).Scan(
 		&updated.Title,
