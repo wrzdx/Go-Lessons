@@ -20,7 +20,7 @@ func main() {
 	defer logFileClose()
 	logger.Info("Logger initialized successfully, file rotation simulated")
 	ctx := context.Background()
-	connString := os.Getenv("LOCAL_DATABASE_URL")
+	connString := os.Getenv("DATABASE_URL")
 	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {
 		fmt.Println(err)
@@ -28,9 +28,7 @@ func main() {
 	}
 	repo := repository.NewPostgres(conn)
 	taskService := service.NewTaskService(repo)
-	handlers := transport.NewHTTPHandlers(taskService,logger)
+	handlers := transport.NewHTTPHandlers(taskService, logger)
 	server := transport.NewHTTPServer(handlers)
-	if err := server.StartServer(); err != nil {
-		fmt.Println(err)
-	}
+	server.StartServer()
 }

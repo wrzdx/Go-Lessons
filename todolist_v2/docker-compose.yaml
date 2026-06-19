@@ -7,16 +7,20 @@ services:
       - "5432:5432"
     volumes:
       - ./out/pgdata:/var/lib/postgresql/
-  
+    healthcheck:
+        test: ["CMD", "pg_isready", "-U", "$POSTGRES_USER"]
+        interval: 3s
+        timeout: 3s
+        retries: 5
 
   app:
     build: .
     ports:
       - "8000:8000"
+    volumes:
+      - ./out/logs:/app/out/logs/
     env_file:
       - .env
     depends_on:
-      - postgres
-
-volumes:
-  postgres_data:
+      postgres:
+        condition: service_healthy
